@@ -1428,6 +1428,27 @@ rte_vhost_enable_guest_notification(int vid, uint16_t queue_id, int enable)
 }
 
 void
+rte_vhost_notify_guest(int vid, uint16_t queue_id)
+{
+	struct virtio_net *dev = get_device(vid);
+	struct vhost_virtqueue *vq;
+
+	if (!dev ||  queue_id >= VHOST_MAX_VRING)
+		return;
+
+	vq = dev->virtqueue[queue_id];
+	if (!vq)
+		return;
+
+	rte_spinlock_lock(&vq->access_lock);
+
+	if (vq->callfd >= 0)
+		eventfd_write(vq->callfd, (eventfd_t)1);
+
+	rte_spinlock_unlock(&vq->access_lock);
+}
+
+void
 rte_vhost_log_write(int vid, uint64_t addr, uint64_t len)
 {
 	struct virtio_net *dev = get_device(vid);

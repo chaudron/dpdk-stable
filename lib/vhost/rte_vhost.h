@@ -289,7 +289,13 @@ struct rte_vhost_device_ops {
 	 */
 	void (*guest_notified)(int vid);
 
-	void *reserved[1]; /**< Reserved for future extension */
+	/**
+	 * If this callback is registered, notification to the guest needs
+	 * to be handled by the front-end calling rte_vhost_notify_guest().
+	 * This can be used to remove the "slow" eventfd_write() syscall
+	 * from the datapath.
+	 */
+	void (*guest_notify)(int vid, uint16_t queue_id);
 };
 
 /**
@@ -435,6 +441,8 @@ void rte_vhost_log_used_vring(int vid, uint16_t vring_idx,
 			      uint64_t offset, uint64_t len);
 
 int rte_vhost_enable_guest_notification(int vid, uint16_t queue_id, int enable);
+
+void rte_vhost_notify_guest(int vid, uint16_t queue_id);
 
 /**
  * Register vhost driver. path could be different for multiple

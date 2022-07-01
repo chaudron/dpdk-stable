@@ -749,6 +749,25 @@ vhost_need_event(uint16_t event_idx, uint16_t new_idx, uint16_t old)
 }
 
 static __rte_always_inline void
+vhost_vring_kick_guest(struct virtio_net *dev, struct vhost_virtqueue *vq)
+{
+	if (dev->notify_ops->guest_notify) {
+		for (uint16_t qid = 0;  qid < dev->nr_vring; qid++) {
+			if (dev->virtqueue[qid] == vq) {
+				dev->notify_ops->guest_notify(dev->vid, qid);
+				goto done;
+			}
+		}
+	}
+	eventfd_write(vq->callfd, (eventfd_t) 1);
+
+done:
+	if (dev->notify_ops->guest_notified)
+		dev->notify_ops->guest_notified(dev->vid);
+}
+
+
+static __rte_always_inline void
 vhost_vring_call_split(struct virtio_net *dev, struct vhost_virtqueue *vq)
 {
 	/* Flush used->idx update before we read avail->flags. */
@@ -771,17 +790,13 @@ vhost_vring_call_split(struct virtio_net *dev, struct vhost_virtqueue *vq)
 		if ((vhost_need_event(vhost_used_event(vq), new, old) &&
 					(vq->callfd >= 0)) ||
 				unlikely(!signalled_used_valid)) {
-			eventfd_write(vq->callfd, (eventfd_t) 1);
-			if (dev->notify_ops->guest_notified)
-				dev->notify_ops->guest_notified(dev->vid);
+			vhost_vring_kick_guest(dev, vq);
 		}
 	} else {
 		/* Kick the guest if necessary. */
 		if (!(vq->avail->flags & VRING_AVAIL_F_NO_INTERRUPT)
 				&& (vq->callfd >= 0)) {
-			eventfd_write(vq->callfd, (eventfd_t)1);
-			if (dev->notify_ops->guest_notified)
-				dev->notify_ops->guest_notified(dev->vid);
+			vhost_vring_kick_guest(dev, vq);
 		}
 	}
 }
@@ -833,11 +848,8 @@ vhost_vring_call_packed(struct virtio_net *dev, struct vhost_virtqueue *vq)
 	if (vhost_need_event(off, new, old))
 		kick = true;
 kick:
-	if (kick) {
-		eventfd_write(vq->callfd, (eventfd_t)1);
-		if (dev->notify_ops->guest_notified)
-			dev->notify_ops->guest_notified(dev->vid);
-	}
+	if (kick)
+		vhost_vring_kick_guest(dev, vq);
 }
 
 static __rte_always_inline void
